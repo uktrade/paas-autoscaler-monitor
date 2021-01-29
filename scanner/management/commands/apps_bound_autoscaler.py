@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import json
 import requests
 import ast
@@ -28,7 +27,6 @@ def get_org_guid(cf_token, org_name):
         headers={"Authorization": f"Bearer {cf_token}"},
     )
     org_response = response.json()
-    # breakpoint()
     for org in org_response['resources']:
         if org['name'] == org_name:
             org_guid = org['guid']
@@ -45,7 +43,6 @@ def get_spaces(cf_token, org_guid):
         headers={"Authorization": f"Bearer {cf_token}"},
     )
     spaces_response = response.json()
-    # breakpoint()
     for space in spaces_response['resources']:
         spaces[space['name']] = space['guid']
 
@@ -53,7 +50,6 @@ def get_spaces(cf_token, org_guid):
 
 
 def get_autoscaler(cf_token, space_guid):
-    # breakpoint()
     app_guid = []
 
     response = requests.get(
@@ -93,58 +89,23 @@ def get_app_name(cf_token, app):
     return app_name
 
 
-def get_app_cpus(cf_token, app):
-    # print(f"checking app: {app}")
-    # breakpoint()
-    response = requests.get(
-        settings.CF_DOMAIN + "/v3/processes",
-        params={"app_guids": [app, ]},
-        headers={"Authorization": f"Bearer {cf_token}"},
-    )
-    # breakpoint()
-    process_response = response.json()
-
-    no_of_instances = process_response['resources'][0]['instances']
-    app_name = get_app_name(cf_token, app)
-
-    return app_name, no_of_instances
-
 def run_scanner(cf_token):
     print("Running scanner")
 
     for org in ast.literal_eval(settings.ORG_GUID):
         org_guid = get_org_guid(cf_token, org)
-
         spaces = get_spaces(cf_token, org_guid)
 
         for space_name in spaces:
-            print(f"{bcolours.HEADER}Checking Autoscaler for space {space_name}...{bcolours.ENDC}")
-
+            print(f"{bcolours.HEADER}Checking for Autoscaler in space {space_name}...{bcolours.ENDC}")
             apps_scaling = get_autoscaler(cf_token, spaces[space_name])
-            # print(apps_scaling)
 
-            for app in apps_scaling:
-                app_name, instances = get_app_cpus(cf_token, app)
-                print(f"{bcolours.OKGREEN}App: {app_name} currently has {instances} instances{bcolours.ENDC}")
-                # breakpoint()
-                # get previous instance_count
-                try:
-                    previous_count = Autoscalestaus.objects.get(app_guid=app).current_count
-                except Autoscalestaus.DoesNotExist:
-                    previous_count = instances
-                # Store in DB
+            for app_guid in apps_scaling:
+                app_name = get_app_name(cf_token, app_guid)
+                print(f"{bcolours.OKGREEN}App: {app_name} is bound to autoscaler{bcolours.ENDC}")
                 Autoscalestaus.objects.update_or_create(
-                                app_guid=app, defaults={"previous_count": previous_count, "current_count": instances}
+                                app_guid=app_guid, defaults={"app_guid": app_guid, "app_name": app_name}
                             )
-                # check to see if app has scaled.
-                if instances > previous_count:
-                    scaled_up_msg = f"*{app_name}* `scaled UP to {instances}`"
-                    print(f"{bcolours.WARNING}" + scaled_up_msg + f"{bcolours.WARNING}")
-                    slack_alert(scaled_up_msg)
-                elif instances < previous_count:
-                    scaled_down_msg = f"*{app_name}* `scaled DOWN to {instances}`"
-                    print(f"{bcolours.WARNING}" + scaled_down_msg + f"{bcolours.WARNING}")
-                    slack_alert(scaled_down_msg)
 
 
 class Command(BaseCommand):
