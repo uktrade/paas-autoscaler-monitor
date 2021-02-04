@@ -83,10 +83,25 @@ def get_app_name(cf_token, app):
         params={"guids": [app, ]},
         headers={"Authorization": f"Bearer {cf_token}"},
     )
-    # breakpoint()
+
     app_response = response.json()
     app_name = app_response['resources'][0]['name']
     return app_name
+
+
+def get_max_inst(cf_token, app_guid, app_name):
+    # breakpoint()
+    response = requests.get(
+        settings.CF_AUTOSCALE_DOMAIN + f"/v1/apps/{app_guid}/policy",
+        headers={"Authorization": f"Bearer {cf_token}"},
+    )
+    scale_response = response.json()
+    if response.status_code == 404:
+        print(f"{bcolours.WARNING}No scaling policy has been added to the app: {app_name}{bcolours.ENDC}")
+        max_int = -1
+    else:
+        max_int = scale_response['instance_max_count']
+    return max_int
 
 
 def run_scanner(cf_token):
@@ -102,9 +117,10 @@ def run_scanner(cf_token):
 
             for app_guid in apps_scaling:
                 app_name = get_app_name(cf_token, app_guid)
+                max_inst = get_max_inst(cf_token, app_guid, app_name)
                 print(f"{bcolours.OKGREEN}App: {app_name} is bound to autoscaler{bcolours.ENDC}")
                 Autoscalestaus.objects.update_or_create(
-                                app_guid=app_guid, defaults={"app_guid": app_guid, "app_name": app_name}
+                                app_guid=app_guid, defaults={"app_guid": app_guid, "app_name": app_name, "max_count": max_inst}
                             )
 
 

@@ -19,6 +19,13 @@ class bcolours:
     UNDERLINE = '\033[4m'
 
 
+def get_max_inst(app_guid):
+
+    max_inst = Autoscalestaus.objects.get(app_guid=app_guid).max_count
+
+    return max_inst
+
+
 def run_scanner(cf_client, cf_token):
     print(f"{bcolours.HEADER}Running Autoscaler Monitor...{bcolours.ENDC}")
 
@@ -39,6 +46,9 @@ def run_scanner(cf_client, cf_token):
             else:
                 previous_count = get_app_obj.current_count
 
+            max_inst = get_max_inst(app_guid)
+            # breakpoint()
+
             Autoscalestaus.objects.update_or_create(
                             app_guid=app_guid, defaults={"previous_count": previous_count, "current_count": no_of_instances}
                         )
@@ -46,6 +56,13 @@ def run_scanner(cf_client, cf_token):
                 scaled_up_msg = f"*{app_name}:* `scaled UP to {no_of_instances}`"
                 print(f"{bcolours.WARNING}" + scaled_up_msg + f"{bcolours.ENDC}")
                 slack_alert(scaled_up_msg)
+
+                # Alert if you are now at Max instance
+                if no_of_instances == max_inst:
+                    max_count_msg = f"*{app_name}:* `has now scaled up to the MAXIMUM set instance count of {max_inst}`"
+                    print(f"{bcolours.WARNING}" + max_count_msg + f"{bcolours.ENDC}")
+                    slack_alert(max_count_msg)
+
             elif no_of_instances < previous_count:
                 scaled_down_msg = f"*{app_name}:* `scaled DOWN to {no_of_instances}`"
                 print(f"{bcolours.WARNING}" + scaled_down_msg + f"{bcolours.ENDC}")
