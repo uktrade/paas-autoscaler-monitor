@@ -7,3 +7,4 @@ class Autoscalestaus(models.Model):
     previous_count = models.IntegerField(null=True)
     current_count = models.IntegerField(null=True)
     max_count = models.IntegerField(null=True)
+    pd_dedup_key = models.CharField(null=True, max_length=60)

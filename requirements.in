@@ -11,3 +11,4 @@ django-staff-sso-client
 cloudfoundry-client
 whitenoise
 gunicorn
+pdpyras
