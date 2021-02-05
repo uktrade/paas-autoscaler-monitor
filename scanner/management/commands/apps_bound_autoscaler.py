@@ -21,7 +21,7 @@ class bcolours:
 
 
 def get_org_guid(cf_token, org_name):
-    print(f"{bcolours.BOLD}Org Name: {bcolours.UNDERLINE}{org_name}{bcolours.ENDC}")
+
     response = requests.get(
         settings.CF_DOMAIN + "/v3/organizations",
         headers={"Authorization": f"Bearer {cf_token}"},
@@ -31,6 +31,45 @@ def get_org_guid(cf_token, org_name):
         if org['name'] == org_name:
             org_guid = org['guid']
     return org_guid
+
+
+def clean_table(cf_token):
+    app_guids = []
+    # org_guids = []
+    print(f"{bcolours.OKCYAN}purging unwanted apps from DB{bcolours.ENDC}")
+
+    for org_name in ast.literal_eval(settings.ORG_GUID):
+        # org = get_org_guid(cf_token, org_name)
+        org_guid = get_org_guid(cf_token, org_name)
+
+        response = requests.get(
+            settings.CF_DOMAIN + "/v3/apps",
+            params={"organization_guids": [org_guid, ]},
+            headers={"Authorization": f"Bearer {cf_token}"},
+        )
+        apps_response = response.json()
+
+        for app_guid in apps_response['resources']:
+            app_guids.append(app_guid['guid'])
+
+        next_url = apps_response['pagination']['next']
+        while next_url:
+            response = requests.get(
+                next_url["href"],
+                headers={"Authorization": f"Bearer {cf_token}"},
+            )
+            apps_response = response.json()
+            for app_guid in apps_response['resources']:
+                app_guids.append(app_guid['guid'])
+
+            next_url = apps_response['pagination']['next']
+
+    # breakpoint()
+    for obj in Autoscalestaus.objects.all():
+        if obj.app_guid not in app_guids:
+            print (f"{bcolours.WARNING}This app ({obj.app_guid}) no longer exists, removing from DB{bcolours.ENDC}")
+            obj.delete()
+
 
 
 def get_spaces(cf_token, org_guid):
@@ -107,7 +146,11 @@ def get_max_inst(cf_token, app_guid, app_name):
 def run_scanner(cf_token):
     print("Running scanner")
 
+    # Remove from DB table all apps that are no longer present in CF
+    clean_table(cf_token)
+
     for org in ast.literal_eval(settings.ORG_GUID):
+        print(f"{bcolours.BOLD}Org Name: {bcolours.UNDERLINE}{org}{bcolours.ENDC}")
         org_guid = get_org_guid(cf_token, org)
         spaces = get_spaces(cf_token, org_guid)
 
