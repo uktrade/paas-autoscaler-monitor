@@ -2,6 +2,7 @@
 from django.core.management.base import BaseCommand
 from core.cloudfoundry import cf_login
 from core.slack import slack_alert
+from core.pagerduty import pager_duty_alert, pager_duty_clear
 from django.conf import settings
 import time
 
@@ -33,6 +34,8 @@ def run_scanner(cf_client, cf_token):
         app_name = app['entity']['name']
         app_guid = app['metadata']['guid']
         no_of_instances = app['entity']['instances']
+        space_guid = app['entity']['space_guid']
+
         # check to see if app is in DB, i.e. app is bound to autoscaler
         try:
             get_app_obj = Autoscalestaus.objects.get(app_guid=app_guid)
@@ -62,11 +65,19 @@ def run_scanner(cf_client, cf_token):
                     max_count_msg = f"*{app_name}:* `has now scaled up to the MAXIMUM set instance count of {max_inst}`"
                     print(f"{bcolours.WARNING}" + max_count_msg + f"{bcolours.ENDC}")
                     slack_alert(max_count_msg)
+                    # Fire alert to Pager Duty
+                    print("Sending alert to PagerDuty")
+                    pager_duty_alert(app_guid, app_name, no_of_instances, space_guid, cf_token)
 
             elif no_of_instances < previous_count:
                 scaled_down_msg = f"*{app_name}:* `scaled DOWN to {no_of_instances}`"
                 print(f"{bcolours.WARNING}" + scaled_down_msg + f"{bcolours.ENDC}")
                 slack_alert(scaled_down_msg)
+
+                # Clear alert if below Max.
+                if Autoscalestaus.objects.get(app_guid=app_guid).pd_dedup_key:
+                    print(f"Clearing alert in PagerDuty for app: {app_name}")
+                    pager_duty_clear(app_guid)
 
 
 class Command(BaseCommand):
