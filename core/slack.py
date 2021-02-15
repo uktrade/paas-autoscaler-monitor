@@ -4,10 +4,7 @@ import json
 
 
 def slack_alert(slack_message):
-    #breakpoint()
-
-    # print(slack_message)
-    if settings.SLACK_ENABLED == 'True':
+    if settings.SLACK_ENABLED:
         print("Sending results to slack")
         url = f'{settings.SLACK_URL}/api/chat.postMessage'
         data = {'channel': f'{settings.SLACK_CHANNEL}', 'text': slack_message}
