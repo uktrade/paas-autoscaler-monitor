@@ -88,32 +88,21 @@ def get_spaces(cf_token, org_guid):
     return spaces
 
 
-def get_autoscaler(cf_token, space_guid):
-    app_guid = []
-
-    response = requests.get(
-        settings.CF_DOMAIN + "/v3/service_instances",
-        params={"space_guids": [space_guid, ]},
+# Not happy with this function
+def get_env(cf_token, env_url):
+    bind = 'True'
+    # breakpoint()
+    response = requests.get(env_url,
         headers={"Authorization": f"Bearer {cf_token}"},
     )
-    service_response = response.json()
-
-    for service in service_response["resources"]:
-        if service["name"] == "autoscaler":
-            autoscaler_guid = service["guid"]
-
-            # get service bindings
-            response = requests.get(
-                settings.CF_DOMAIN + "/v3/service_bindings",
-                params={"service_instance_guids": [autoscaler_guid, ]},
-                headers={"Authorization": f"Bearer {cf_token}"},
-            )
-            # breakpoint()
-            bindings_response = response.json()
-            for app in bindings_response['resources']:
-                # get app guid
-                app_guid.append(app['links']['app']['href'].split('/')[-1])
-    return app_guid
+    env_response = response.json()
+    try:
+        if env_response['var']['X_AUTOSCALING'].upper() == 'FALSE':
+            bind = 'False'
+    except KeyError:
+        # print("App can be bound")
+        bind = 'True'
+    return bind
 
 
 def get_app_name(cf_token, app):
@@ -128,6 +117,71 @@ def get_app_name(cf_token, app):
     return app_name
 
 
+def bind_app_autoscaler(cf_token, app_name, app_guid, autoscaler_guid, apps_not_autoscaling):
+
+    json_data = {
+        'type': 'app',
+        'relationships': {
+            'app': {
+                'data': {
+                    'guid': app_guid
+                }
+            },
+            'service_instance': {
+                'data': {
+                    'guid': autoscaler_guid
+                }
+            }
+        }
+    }
+
+    if settings.BIND_ENABLED == 'True':
+        print(f"{bcolours.OKGREEN}Binding {app_name} to Autoscaler{bcolours.ENDC}")
+        response = requests.post(
+            settings.CF_DOMAIN + "/v3/service_bindings",
+            headers={"Authorization": f"Bearer {cf_token}", "Content-Type": "application/json"},
+            data=json.dumps(json_data),
+        )
+        bind_response = response.json()
+        print(f"{bcolours.OKBLUE}{app_name} is now bound to: {bind_response['data']['name']}{bcolours.ENDC}")
+
+        # Attach policy
+        print(f"{bcolours.OKGREEN}Attaching default policy to {app_name}{bcolours.ENDC}")
+        default_policy = {
+              "instance_min_count": int(settings.MIN_COUNT),
+              "instance_max_count": int(settings.MAX_COUNT),
+              "scaling_rules": [
+                    {
+                      "metric_type": "cpu",
+                      "breach_duration_secs": 120,
+                      "threshold": int(settings.MIN_THRESHOLD),
+                      "operator": "<",
+                      "cool_down_secs": 60,
+                      "adjustment": "-1"
+                    },
+                    {
+                      "metric_type": "cpu",
+                      "breach_duration_secs": 120,
+                      "threshold": int(settings.MAX_THRESHOLD),
+                      "operator": ">=",
+                      "cool_down_secs": 60,
+                      "adjustment": "+1"
+                    }
+              ]
+        }
+        # breakpoint()
+        response = requests.put(
+            settings.CF_AUTOSCALE_DOMAIN + f"/v1/apps/{app_guid}/policy",
+            headers={"Authorization": f"Bearer {cf_token}"},
+            data=json.dumps(default_policy)
+        )
+        # scale_response = response.json()
+        print(f"{bcolours.OKGREEN}{response.status_code}{bcolours.ENDC}")
+    else:
+        print(f"{bcolours.OKBLUE}Running in demo mode {app_name} will NOT be bound{bcolours.ENDC}")
+        apps_not_autoscaling.append(app_name)
+
+
 def get_max_inst(cf_token, app_guid, app_name):
     # breakpoint()
     response = requests.get(
@@ -138,9 +192,79 @@ def get_max_inst(cf_token, app_guid, app_name):
     if response.status_code == 404:
         print(f"{bcolours.WARNING}No scaling policy has been added to the app: {app_name}{bcolours.ENDC}")
         max_int = -1
+    elif response.status_code == 403:
+        print(f"{bcolours.WARNING}The app: {app_name} is not bound to Autoscaler{bcolours.ENDC}")
+        max_int = -2
     else:
         max_int = scale_response['instance_max_count']
     return max_int
+
+
+def check_autoscaled_apps(cf_token, space_guid, apps_not_autoscaling):
+    app_guid_list = []
+
+    # Get autoscaler guid
+    response = requests.get(
+        settings.CF_DOMAIN + "/v3/service_instances",
+        params={"space_guids": [space_guid, ],
+            "service_plan_names": "autoscaler-free-plan"
+            },
+        headers={"Authorization": f"Bearer {cf_token}"},
+    )
+    service_response = response.json()
+    # breakpoint()
+    # Check if there is autoscaler in space
+    if service_response['pagination']['total_results'] > 0:
+        autoscaler_guid = service_response['resources'][0]['guid']
+
+        # get service bindings
+        response = requests.get(
+            settings.CF_DOMAIN + "/v3/service_bindings",
+            params={"service_instance_guids": [autoscaler_guid, ]},
+            headers={"Authorization": f"Bearer {cf_token}"},
+        )
+        bindings_response = response.json()
+        for app in bindings_response['resources']:
+            # get app guid
+            app_guid_list.append(app['links']['app']['href'].split('/')[-1])
+
+        # breakpoint()
+        # Get list of apps
+        response = requests.get(
+            settings.CF_DOMAIN + "/v3/apps",
+            params={"space_guids": [space_guid, ]},
+            headers={"Authorization": f"Bearer {cf_token}"},
+        )
+        app_response = response.json()
+        #breakpoint()
+        # Check if app is bound to autoscaler
+        for app in app_response['resources']:
+
+            # Append to app_guid
+            # print(app)
+            app_guid = app['guid']
+            app_name = app['name']
+            app_status = app['state']
+
+            if app_status == 'STARTED':
+                # breakpoint()
+                bind = get_env(cf_token, app['links']['environment_variables']['href'])
+                # If not check env if it should be bound
+                if bind == 'True':
+                    # breakpoint()
+                    if app_guid not in app_guid_list:
+                        # Bind to Autoscaler
+                        bind_app_autoscaler(cf_token, app_name, app_guid, autoscaler_guid, apps_not_autoscaling)
+
+                    max_inst = get_max_inst(cf_token, app_guid, app_name)
+                    print(f"{bcolours.OKGREEN}App: {app_name} is bound to autoscaler{bcolours.ENDC}")
+                    Autoscalestaus.objects.update_or_create(
+                                    app_guid=app_guid, defaults={"app_guid": app_guid, "app_name": app_name, "max_count": max_inst}
+                                )
+                else:
+                    print(f"{bcolours.WARNING}App: {app_name} will NOT be bound to autoscaler as exclude VAR set in app.{bcolours.ENDC}")
+    else:
+        print(f"{bcolours.WARNING}There is no autoscaler in this space.{bcolours.ENDC}")
 
 
 def run_scanner(cf_token):
@@ -148,23 +272,22 @@ def run_scanner(cf_token):
 
     # Remove from DB table all apps that are no longer present in CF
     clean_table(cf_token)
+    apps_not_autoscaling = []
 
     for org in ast.literal_eval(settings.ORG_GUID):
         print(f"{bcolours.BOLD}Org Name: {bcolours.UNDERLINE}{org}{bcolours.ENDC}")
         org_guid = get_org_guid(cf_token, org)
         spaces = get_spaces(cf_token, org_guid)
+        
 
         for space_name in spaces:
             print(f"{bcolours.HEADER}Checking for Autoscaler in space {space_name}...{bcolours.ENDC}")
-            apps_scaling = get_autoscaler(cf_token, spaces[space_name])
+            check_autoscaled_apps(cf_token, spaces[space_name], apps_not_autoscaling)
 
-            for app_guid in apps_scaling:
-                app_name = get_app_name(cf_token, app_guid)
-                max_inst = get_max_inst(cf_token, app_guid, app_name)
-                print(f"{bcolours.OKGREEN}App: {app_name} is bound to autoscaler{bcolours.ENDC}")
-                Autoscalestaus.objects.update_or_create(
-                                app_guid=app_guid, defaults={"app_guid": app_guid, "app_name": app_name, "max_count": max_inst}
-                            )
+    if apps_not_autoscaling:
+        print(f"{bcolours.BOLD}The following apps are not attached to autoscaler{bcolours.ENDC}")
+        for app in apps_not_autoscaling:
+            print(f"{bcolours.FAIL}{app}{bcolours.ENDC}")
 
 
 class Command(BaseCommand):
