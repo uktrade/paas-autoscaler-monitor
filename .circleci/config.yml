@@ -1,0 +1,39 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/python:3.9
+
+    working_directory: ~/app
+
+    steps:
+      - checkout
+
+      - restore_cache:
+          name: Restore pip cache
+          keys:
+            - v1-paas-autoscaler-monitor-{{ checksum "requirements.txt" }}
+            - v1-paas-autoscaler-monitor-
+
+      - run:
+          name: export example env
+          command: |
+            cat ~/app/example.env | awk '{print "export " $0}' >> $BASH_ENV
+
+      - run:
+          name: Install dependencies
+          command: python -m pip install --cache-dir ~/cache/pip -r requirements.txt
+
+      - save_cache:
+          name: Save pip cache
+          key: v1-paas-autoscaler-monitor-{{ checksum "requirements.txt" }}
+          paths:
+            - ~/cache/pip
+
+      - run:
+          name: Run checks
+          command: ./manage.py check
+
+      - run:
+          name: Run tests
+          command: ./manage.py test
