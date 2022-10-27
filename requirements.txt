@@ -55,7 +55,7 @@ multidict==6.0.2
     #   yarl
 oauth2-client==1.2.1
     # via cloudfoundry-client
-oauthlib==3.2.0
+oauthlib==3.2.1
     # via requests-oauthlib
 pdpyras==4.4.0
     # via -r requirements.in
