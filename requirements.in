@@ -15,4 +15,4 @@ gunicorn
 pdpyras
 urllib3>=1.26.5
 protobuf>=3.19.5
-oauthlib==3.2.1
+oauthlib==3.2.2
