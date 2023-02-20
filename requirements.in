@@ -1,6 +1,6 @@
 aiohttp>=3.7.4
 dj-database-url
-django==3.2.16
+django==3.2.18
 django-environ
 django-jquery
 psycopg2-binary
@@ -15,4 +15,4 @@ gunicorn
 pdpyras
 urllib3>=1.26.5
 protobuf>=3.19.5
-oauthlib==3.2.1
+oauthlib==3.2.2
