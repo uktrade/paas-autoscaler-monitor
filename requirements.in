@@ -7,7 +7,7 @@ psycopg2-binary
 python-dotenv
 requests
 raven
-sentry_sdk
+sentry_sdk==1.14.0
 django-staff-sso-client
 cloudfoundry-client>=1.16.0
 whitenoise
