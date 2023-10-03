@@ -93,7 +93,7 @@ six==1.16.0
     # via websocket-client
 sqlparse==0.4.3
     # via django
-urllib3==1.26.14
+urllib3==1.26.17
     # via
     #   -r requirements.in
     #   pdpyras
