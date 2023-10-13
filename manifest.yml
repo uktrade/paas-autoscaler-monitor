@@ -1,0 +1,6 @@
+---
+applications:
+  - name: paas-autoscaler-monitor
+    buildpacks:
+      - python_buildpack
+    stack: cflinuxfs4
