@@ -1,6 +1,6 @@
 aiohttp>=3.7.4
 dj-database-url
-django==3.2.18
+django==4.2.8
 django-environ
 django-jquery
 psycopg2-binary
@@ -8,7 +8,7 @@ python-dotenv
 requests
 raven
 sentry_sdk==1.14.0
-django-staff-sso-client
+django-staff-sso-client==4.2.1
 cloudfoundry-client>=1.16.0
 whitenoise
 gunicorn
